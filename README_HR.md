@@ -26,7 +26,7 @@
 
 Ovaj projekt implementira **sustav strojnog učenja bez nadzora** za detekciju anomalija u potrošnji energije stambenih objekata. Sustav analizira podatke o komunalnom obračunu iz stambenih zgrada, fokusirajući se na potrošnju energije za grijanje (ENESGR) i tople vode (ENESTV) kako bi identificirao neobične obrasce koji mogu ukazivati na kvarove sustava, pogreške u naplati ili neobično ponašanje stanara.
 
-Pristup kombinira **segmentaciju temeljenu na grupiranju** s **detekcijom anomalija temeljenoj na rezidualima**, koristeći prednosti nenadziranog učenja za otkrivanje prirodnih grupa u obrascima potrošnje bez potrebe za označenim podacima za treniranje.
+Pristup kombinira **segmentaciju temeljenu na grupiranju** s **detekcijom anomalija temeljenom na rezidualima**, koristeći prednosti nenadziranog učenja za otkrivanje prirodnih grupa u obrascima potrošnje bez potrebe za označenim podacima za treniranje.
 
 ## Cilj
 
