@@ -71,7 +71,7 @@ The primary objectives of this project are:
 
 **Weather Features**:
 - `TAVG`: Average monthly temperature (°C)
-- `HTDD`: Heating Degree Days - quantifies heating demand (days when temperature < 18°C)
+- `HTDD`: Heating Degree Days - cumulative measure of temperature deficit below base temperature (18°C). Calculated as sum of (18°C - daily_average_temp) for all days below the base
 - Merged with consumption data by year (GODINA) and month (MJESEC)
 
 **Temporal Coverage**: Monthly billing data spanning 14+ years (2010-2024)
@@ -91,14 +91,15 @@ The project evolved through multiple approaches, with the **final methodology** 
 The final methodology leverages meteorological data to account for weather-driven consumption variations:
 
 #### 1. Weather Data Integration
-- **Heating Degree Days (HTDD)**: Quantifies heating demand based on days when temperature < 18°C
+- **Heating Degree Days (HTDD)**: Cumulative measure of temperature deficit when temperature < 18°C (base temperature). Calculated as the sum of (18°C - daily_average_temp) for all days below the base, quantifying total heating demand
 - **Average Temperature (TAVG)**: Monthly temperature values
 - Data merged by year (GODINA) and month (MJESEC) to correlate weather patterns with energy consumption
 
 #### 2. Per-Apartment Baseline Models
 - **Linear regression** of ENESGR (energy consumption) vs. HTDD for each apartment individually
 - Model formula: `EXPECTED_BY_TEMP = f(HTDD)` per apartment (grouped by ID_STANA)
-- Captures each apartment's unique response to heating demand
+- Captures each apartment's unique response to heating demand (coefficient represents temperature sensitivity/heating demand rate)
+- Only apartments with sufficient billing history are modeled
 - **Advantage**: Interpretable, domain-grounded predictions based on meteorological necessity
 
 #### 3. Robust Statistical Anomaly Detection
@@ -106,9 +107,9 @@ The final methodology leverages meteorological data to account for weather-drive
 - Per-apartment statistics:
   - `RES_MEDIAN`: Median of residuals
   - `RES_MAD`: Median Absolute Deviation (robust to outliers)
-  - `RES_STD = RES_MAD × 1.4826` (conversion to standard deviation)
+  - `RES_STD = RES_MAD × 1.4826` (conversion to standard deviation assuming normally distributed residuals)
 - Compute Z-scores: `Z_SCORE_RES = (RESIDUAL - RES_MEDIAN) / RES_STD`
-- **Flag anomalies where |Z_SCORE_RES| > 3.5**
+- **Flag anomalies where |Z_SCORE_RES| > 3.5** (threshold chosen to balance sensitivity and false positive rate)
 - **Confidence intervals**: Display ±3σ bands around expected consumption
 
 #### 4. Key Advantages
@@ -141,7 +142,7 @@ The following approaches were explored during development and informed the final
 
 ##### 1.3 Cluster-Specific Prediction Models
 - **Trimmed Linear Regression** models trained independently for each cluster
-- **Quantile-based trimming**: Remove extreme outliers (0.01-2.5% trimming) before model training to prevent skewing
+- **Quantile-based trimming**: Remove extreme outliers from both tails (e.g., 2.5% from each tail = 5% total, or 0.5% from each tail = 1% total) before model training to prevent skewing
 - Features: Surface area (POVRSINA), installed power (S_SNAGA), seasonal encoding (MJESEC_sin, MJESEC_cos)
 - Separate models improve prediction accuracy by accounting for different consumption behaviors
 
@@ -220,7 +221,7 @@ The system employs **three complementary detection methods** for robust identifi
 
 **Implementation**:
 - Separate models for each cluster
-- **Quantile-based trimming**: Remove extreme outliers (0.01-2.5% of data) before training to prevent model skewing
+- **Quantile-based trimming**: Remove extreme outliers from both tails (e.g., 2.5% from each tail = 5% total) before training to prevent model skewing
 - Features: POVRSINA (surface area), S_SNAGA (installed power), MJESEC_sin, MJESEC_cos, BR_OSOBA (when available)
 - Performance evaluated via residual analysis
 - **Seasonal stratification**: Separate winter (ZIMA) and summer (LJETO) models with different trimming thresholds
@@ -316,8 +317,8 @@ The system employs **three complementary detection methods** for robust identifi
 
 #### Prediction Performance
 - **Per-apartment linear models** (ENESGR ~ HTDD) effectively capture weather-driven consumption
-- **Weather normalization** removed ~70-80% of seasonal variation, isolating true anomalies
-- **Interpretable coefficients**: Each apartment's HTDD slope represents its heating efficiency
+- **Weather normalization** removed majority of seasonal variation, isolating true anomalies
+- **Interpretable coefficients**: Each apartment's HTDD slope represents its heating demand rate (energy per degree-day)
 - **Residual patterns**: Systematic deviations from weather-expected values highlight operational issues
 
 #### Anomaly Detection Performance
@@ -331,7 +332,7 @@ Successfully identified multiple anomaly types with high confidence:
 #### Statistical Robustness
 - **MAD-based Z-scores** (threshold: 3.5) provided robust anomaly flagging
 - **Confidence intervals** (±3σ) clearly visualized normal operating range per apartment
-- **False positive rate**: Reduced by ~60-70% compared to non-weather-normalized methods
+- **False positive rate**: Significantly reduced compared to non-weather-normalized methods
 - **Interpretability**: Anomalies easily explained through meteorological context
 
 ---
@@ -361,18 +362,18 @@ Identified multiple types of anomalies using ensemble detection:
 - **Behavioral Anomalies**: Unusual consumption patterns for specific apartments in specific months (detected by per-apartment, per-month Z-score)
 
 #### Method Comparison
-- **Seasonal Z-Score**: Best for detecting deviations from apartment-specific patterns; reduces false positives by 30-40%
+- **Seasonal Z-Score**: Best for detecting deviations from apartment-specific patterns; reduces false positives significantly compared to global Z-score
 - **MAD-Based Detection**: Most robust to non-normal distributions; fewer false positives than standard Z-score
 - **Wavelet Detection**: Excellent for sudden changes and meter errors; detects abrupt consumption shifts
-- **Ensemble Approach**: Combining methods increased detection confidence and reduced false alarm rate by ~50%
-- **Weather-Normalized (Final)**: Superior to all alternatives - simplest, most interpretable, lowest false positive rate (~60-70% reduction)
+- **Ensemble Approach**: Combining methods increased detection confidence and reduced false alarm rate compared to single-method approaches
+- **Weather-Normalized (Final)**: Superior to all alternatives by incorporating domain knowledge - simplest, most interpretable, with lowest false positive rate
 
 ### Insights
 
 #### Weather-Normalized Approach (Final)
-- **HTDD as primary driver**: Heating Degree Days directly quantify heating demand; strongest predictor of consumption
-- **Per-apartment heterogeneity**: Each apartment has unique HTDD response (coefficient varies 2-10x across apartments)
-- **Weather eliminates seasonality**: Normalizing by temperature removes ~70-80% of seasonal variation
+- **HTDD as primary driver**: Heating Degree Days (cumulative temperature deficit) directly quantify heating demand; strongest predictor of consumption
+- **Per-apartment heterogeneity**: Each apartment has unique HTDD response (coefficient varies significantly across apartments)
+- **Weather eliminates seasonality**: Normalizing by temperature removes majority of seasonal variation
 - **MAD robustness**: Median-based statistics handle real-world non-normal distributions effectively
 - **Interpretability advantage**: "Consumption higher than expected for this temperature" is immediately understandable
 - **Simplified deployment**: Single unified approach vs. complex ensemble tuning
@@ -501,6 +502,9 @@ jupyter lab
 #### Final Approach: Weather-Normalized Detection
 
 ```python
+# Note: This is illustrative code showing the conceptual approach.
+# Production code should include error handling, data validation, and proper pandas indexing.
+
 # 1. Load and merge data
 import pandas as pd
 import numpy as np
@@ -518,11 +522,12 @@ data = data.merge(weather[['GODINA', 'MJESEC', 'TAVG', 'HTDD']],
 # 2. Per-apartment weather-based prediction
 from sklearn.linear_model import LinearRegression
 
-# Group by apartment and fit model
-apartments = data.groupby('ID_STANA')
-predictions = []
+# Initialize columns for results
+data['EXPECTED_BY_TEMP'] = np.nan
+data['RESIDUAL'] = np.nan
 
-for apt_id, apt_data in apartments:
+# Group by apartment and fit model
+for apt_id, apt_data in data.groupby('ID_STANA'):
     # Fit linear model: ENESGR ~ HTDD
     X = apt_data[['HTDD']].values
     y = apt_data['ENESGR'].values
@@ -530,29 +535,32 @@ for apt_id, apt_data in apartments:
     model = LinearRegression()
     model.fit(X, y)
     
-    # Predict expected consumption
-    apt_data['EXPECTED_BY_TEMP'] = model.predict(X)
-    apt_data['RESIDUAL'] = apt_data['ENESGR'] - apt_data['EXPECTED_BY_TEMP']
-    predictions.append(apt_data)
-
-data = pd.concat(predictions)
+    # Store predictions using loc indexing
+    predictions = model.predict(X)
+    data.loc[apt_data.index, 'EXPECTED_BY_TEMP'] = predictions
+    data.loc[apt_data.index, 'RESIDUAL'] = y - predictions
 
 # 3. Robust anomaly detection (MAD-based)
 from scipy.stats import median_abs_deviation
 
+# Initialize columns for statistics
+data['Z_SCORE_RES'] = np.nan
+data['RES_STD'] = np.nan
+
 # Per-apartment residual statistics
 for apt_id in data['ID_STANA'].unique():
     apt_mask = data['ID_STANA'] == apt_id
-    residuals = data.loc[apt_mask, 'RESIDUAL']
+    residuals = data.loc[apt_mask, 'RESIDUAL'].dropna()
     
-    # Median and MAD
-    res_median = np.median(residuals)
-    res_mad = median_abs_deviation(residuals, nan_policy='omit')
-    res_std = res_mad * 1.4826  # Convert MAD to STD
-    
-    # Z-score
-    data.loc[apt_mask, 'Z_SCORE_RES'] = (residuals - res_median) / res_std
-    data.loc[apt_mask, 'RES_STD'] = res_std
+    if len(residuals) > 0:
+        # Median and MAD
+        res_median = np.median(residuals)
+        res_mad = median_abs_deviation(residuals, nan_policy='omit')
+        res_std = res_mad * 1.4826  # Convert MAD to STD (assumes normal distribution)
+        
+        # Z-score
+        data.loc[apt_mask, 'Z_SCORE_RES'] = (residuals - res_median) / res_std
+        data.loc[apt_mask, 'RES_STD'] = res_std
 
 # 4. Flag anomalies
 threshold = 3.5
@@ -566,6 +574,8 @@ data['LOWER_BOUND'] = np.maximum(0, data['EXPECTED_BY_TEMP'] - 3 * data['RES_STD
 #### Alternative Approach: Multi-Method Ensemble (Explored)
 
 ```python
+# Note: This is illustrative code showing the conceptual approach explored in 1EG notebooks.
+
 # 1. Load and preprocess data
 import pandas as pd
 import numpy as np
@@ -586,11 +596,16 @@ clusters = kmeans.fit_predict(scaled_features)
 from sklearn.linear_model import LinearRegression
 for cluster_id in range(4):
     cluster_data = data[clusters == cluster_id]
-    # Quantile-based trimming (remove extreme 2.5%)
+    # Quantile-based trimming (remove extreme 2.5% from each tail = 5% total)
     lower_q = cluster_data['ENESGR'].quantile(0.025)
     upper_q = cluster_data['ENESGR'].quantile(0.975)
     trimmed_data = cluster_data[(cluster_data['ENESGR'] >= lower_q) & 
                                  (cluster_data['ENESGR'] <= upper_q)]
+    
+    # Prepare features from trimmed data
+    X_train = trimmed_data[['POVRSINA', 'S_SNAGA', 'MJESEC_sin', 'MJESEC_cos']]
+    y_train = trimmed_data['ENESGR']
+    
     model = LinearRegression()
     model.fit(X_train, y_train)
     
@@ -612,7 +627,8 @@ anomalies_mad = np.abs(z_score_mad) > 5.0
 # 5.3 Wavelet-based detection
 import pywt
 coeffs = pywt.wavedec(consumption_series, 'db4', level=2)
-cD1 = coeffs[1]  # Detail coefficients
+# coeffs = [cA2, cD2, cD1] where cD1 is the level-1 detail coefficients
+cD1 = coeffs[-1]  # Get level-1 detail coefficients (last element)
 threshold = np.mean(np.abs(cD1)) + 3 * np.std(cD1)
 anomalies_wavelet = np.abs(cD1) > threshold
 
@@ -631,7 +647,7 @@ AnomalyDetection/
 ├── uv.lock                             # Dependency lock file
 │
 ├── notebooks/                          # Jupyter notebooks
-│   ├── Temperaturna_analiza.ipynb     # FINAL: Weather-normalized detection
+│   ├── Temperaturna_analiza.ipynb     # FINAL: Weather-normalized detection (Croatian: "Temperature Analysis")
 │   ├── 1EG.ipynb                      # Energy Group 1 - Multi-method analysis
 │   ├── 2EG.ipynb                      # Energy Group 2 analysis
 │   ├── 3EG.ipynb                      # Energy Group 3 analysis
@@ -663,7 +679,7 @@ This project was developed as part of academic research in **machine learning ap
 ### Research Questions Addressed
 - Can unsupervised learning effectively segment residential energy consumers? **Yes** - K-means clustering revealed 3-5 distinct patterns
 - How can seasonal patterns be integrated into anomaly detection frameworks? **Weather normalization** - HTDD provides direct meteorological explanation
-- What is the trade-off between model complexity and interpretability in utility anomaly detection? **Simplicity wins** - Weather-normalized linear models outperform complex ensembles
+- What is the trade-off between model complexity and interpretability in utility anomaly detection? **Domain knowledge enables simplicity** - When relevant domain features (weather) are available, simpler interpretable models can outperform complex ensembles
 - How do cluster-specific models compare to global approaches? **Cluster-specific better** - But per-apartment weather models are superior to both
 - Can meteorological data improve anomaly detection over purely statistical methods? **Definitively yes** - 60-70% reduction in false positives
 
